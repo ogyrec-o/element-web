@@ -22,8 +22,27 @@ function getSafeCli(): MatrixClient {
 }
 
 export class ElementWebBuiltinsApi implements BuiltinsApi {
+    private _roomView?: React.ComponentType<RoomViewProps>;
+
+    /**
+     * Sets the components used to render a RoomView
+     *
+     * This only really exists here because referencing RoomView directly causes a nightmare of
+     * circular dependencies that break the whole app, so instead we avoid referencing it here
+     * and pass it in from somewhere it's already referenced (see related comment in app.tsx).
+     *
+     * @param component The RoomView component
+     */
+    public setRoomViewComponent(component: React.ComponentType<RoomViewProps>): void {
+        this._roomView = component;
+    }
+
     public getRoomViewComponent(): React.ComponentType<RoomViewProps> {
-        return RoomView;
+        if (!this._roomView) {
+            throw new Error("No RoomView component has been set");
+        }
+
+        return this._roomView;
     }
 
     public renderRoomView(roomId: string): React.ReactNode {
