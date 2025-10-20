@@ -214,6 +214,8 @@ module.exports = (env, argv) => {
 
                 // Define a variable so the i18n stuff can load
                 "$webapp": path.resolve(__dirname, "webapp"),
+
+                "counterpart": path.resolve(__dirname, "packages/shared-components/node_modules/counterpart"),
             },
             fallback: {
                 // Mock out the NodeFS module: The opus decoder imports this wrongly.
