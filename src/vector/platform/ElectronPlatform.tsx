@@ -104,7 +104,7 @@ export default class ElectronPlatform extends BasePlatform {
 
     // Use custom in-app toast windows only on Windows (integrates nicely with Electron)
     private useCustomToasts(): boolean {
-        return true; // Boolean((SdkConfig.get() as any)?.desktop_custom_toasts);
+        return true; // TODO: Labs feat
     }
 
     public constructor() {
