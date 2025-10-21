@@ -445,8 +445,15 @@ export default class ElectronPlatform extends BasePlatform {
             // blob -> data:
             const dataUrl = await new Promise<string>((resolve, reject) => {
                 const fr = new FileReader();
-                fr.onload = () => resolve(String(fr.result));
-                fr.onerror = () => reject(fr.error);
+                fr.onload = () => {
+                    const val = fr.result;
+                    if (typeof val === "string") {
+                        resolve(val);
+                    } else {
+                        reject(new Error("Unexpected FileReader result type"));
+                    }
+                };
+                fr.onerror = () => reject(fr.error ?? new Error("FileReader failed"));
                 fr.readAsDataURL(blob);
             });
             return dataUrl;
