@@ -123,6 +123,7 @@ interface IState {
 
     deviceNotificationsEnabled: boolean;
     desktopNotifications: boolean;
+    desktopShowSender: boolean;
     desktopShowBody: boolean;
     audioNotifications: boolean;
 
@@ -214,6 +215,7 @@ export default class Notifications extends React.PureComponent<EmptyObject, ISta
             phase: Phase.Loading,
             deviceNotificationsEnabled: SettingsStore.getValue("deviceNotificationsEnabled") ?? true,
             desktopNotifications: SettingsStore.getValue("notificationsEnabled"),
+            desktopShowSender: SettingsStore.getValue("notificationSenderInfoEnabled"),
             desktopShowBody: SettingsStore.getValue("notificationBodyEnabled"),
             audioNotifications: SettingsStore.getValue("audioNotificationsEnabled"),
             clearingNotifications: false,
@@ -237,6 +239,9 @@ export default class Notifications extends React.PureComponent<EmptyObject, ISta
             SettingsStore.watchSetting("deviceNotificationsEnabled", null, (...[, , , , value]) => {
                 this.setState({ deviceNotificationsEnabled: value as boolean });
             }),
+            SettingsStore.watchSetting("notificationSenderInfoEnabled", null, (...[, , , , value]) =>
+                this.setState({ desktopShowSender: value as boolean }),
+            ),
             SettingsStore.watchSetting("notificationBodyEnabled", null, (...[, , , , value]) =>
                 this.setState({ desktopShowBody: value as boolean }),
             ),
@@ -474,7 +479,17 @@ export default class Notifications extends React.PureComponent<EmptyObject, ISta
         await SettingsStore.setValue("notificationsEnabled", null, SettingLevel.DEVICE, checked);
     };
 
+    private onDesktopShowSenderChanged = async (checked: boolean): Promise<void> => {
+        await SettingsStore.setValue("notificationSenderInfoEnabled", null, SettingLevel.DEVICE, checked);
+        if (!checked) {
+            await SettingsStore.setValue("notificationBodyEnabled", null, SettingLevel.DEVICE, false);
+        }
+    };
+
     private onDesktopShowBodyChanged = async (checked: boolean): Promise<void> => {
+        if (checked && !SettingsStore.getValue("notificationSenderInfoEnabled")) {
+            await SettingsStore.setValue("notificationSenderInfoEnabled", null, SettingLevel.DEVICE, true);
+        }
         await SettingsStore.setValue("notificationBodyEnabled", null, SettingLevel.DEVICE, checked);
     };
 
@@ -713,11 +728,18 @@ export default class Notifications extends React.PureComponent<EmptyObject, ISta
                             disabled={this.state.phase === Phase.Persisting}
                         />
                         <LabelledToggleSwitch
+                            data-testid="notif-setting-notificationSenderInfoEnabled"
+                            value={this.state.desktopShowSender}
+                            onChange={this.onDesktopShowSenderChanged}
+                            label={_t("settings|notifications|desktop_notification_show_sender")}
+                            disabled={this.state.phase === Phase.Persisting}
+                        />
+                        <LabelledToggleSwitch
                             data-testid="notif-setting-notificationBodyEnabled"
                             value={this.state.desktopShowBody}
                             onChange={this.onDesktopShowBodyChanged}
                             label={_t("settings|notifications|show_message_desktop_notification")}
-                            disabled={this.state.phase === Phase.Persisting}
+                            disabled={this.state.phase === Phase.Persisting || !this.state.desktopShowSender}
                         />
                         <LabelledToggleSwitch
                             data-testid="notif-setting-audioNotificationsEnabled"

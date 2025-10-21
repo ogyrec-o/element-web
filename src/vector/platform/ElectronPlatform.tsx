@@ -45,6 +45,9 @@ import { IPCManager } from "./IPCManager";
 import { _t } from "../../languageHandler";
 import { BadgeOverlayRenderer } from "../../favicon";
 import GenericToast from "../../components/views/toasts/GenericToast.tsx";
+import * as Avatar from "../../Avatar";
+import DMRoomMap from "../../utils/DMRoomMap";
+import SettingsStore from "../../settings/SettingsStore";
 
 interface SquirrelUpdate {
     releaseNotes: string;
@@ -99,6 +102,11 @@ export default class ElectronPlatform extends BasePlatform {
     private supportedSettings?: Record<string, boolean>;
     private clientStartedPromiseWithResolvers = Promise.withResolvers<void>();
 
+    // Use custom in-app toast windows only on Windows (integrates nicely with Electron)
+    private useCustomToasts(): boolean {
+        return true; // Boolean((SdkConfig.get() as any)?.desktop_custom_toasts);
+    }
+
     public constructor() {
         super();
 
@@ -129,6 +137,27 @@ export default class ElectronPlatform extends BasePlatform {
         // `homeserverUrl` (IPC) is requested by the main process. A reply is sent over the same channel.
         this.electron.on("homeserverUrl", () => {
             this.electron.send("homeserverUrl", MatrixClientPeg.get()?.getHomeserverUrl());
+        });
+
+        this.electron.on("webBaseUrl", () => {
+            this.electron.send("webBaseUrl", this.baseUrl);
+        });
+
+        this.electron.on("customToastClick", async (_ev, { roomId, eventId, nonce }) => {
+            await this.clientStartedPromiseWithResolvers.promise;
+            const payload: any = {
+                action: Action.ViewRoom,
+                room_id: roomId,
+                metricsTrigger: "Notification",
+            };
+            if (eventId) payload.event_id = eventId;
+            try {
+                dis.dispatch(payload);
+            } finally {
+                // ACK back to main so it doesn't run its fallback navigation
+                try { this.electron.send("customToastClickAck", nonce); } catch {}
+                await this.ipc.call("focusWindow");
+            }
         });
 
         // `serverSupportedVersions` is requested by the main process when it needs to know if the
@@ -264,6 +293,176 @@ export default class ElectronPlatform extends BasePlatform {
         }
     };
 
+    private async showWindowsToastWithAvatar(
+        title: string,
+        msg: string,
+        _avatarUrl: string | null, // not used here; we build our own avatar
+        room: Room,
+        ev?: MatrixEvent,
+    ): Promise<void> {
+        const eventId = ev?.getId();
+        const launchArg =
+            `element://room/${encodeURIComponent(room.roomId)}${eventId ? `/${encodeURIComponent(eventId)}` : ""}`;
+        try {
+            // If sender info is hidden, show brand and rely on app icon
+            if (!SettingsStore.getValue("notificationSenderInfoEnabled")) {
+                const brand = SdkConfig.get().brand || "Element";
+                await this.ipc.call("winToast", { title: brand, body: msg, launchArg, avatarCandidates: [] });
+                return;
+            }
+
+            // Try to match the UI: room avatar; for DMs use partner avatar if present
+            let dataUrl: string | null = null;
+            const uiUrl = Avatar.avatarUrlForRoom(room, 64, 64, "crop");
+            if (uiUrl) {
+                dataUrl = await this.fetchImageAsDataUrl(uiUrl);
+            }
+
+            // Fallback to a letter avatar (rendered to data:) like the UI
+            if (!dataUrl) {
+                const { key, name } = this.getLetterAvatarKeyAndName(room);
+                dataUrl = await this.renderLetterAvatarDataUrl(name, key, 64);
+            }
+            await this.ipc.call("winToast", { title, body: msg, launchArg, avatarCandidates: [dataUrl] });
+
+        } catch (e) {
+            console.error("[ElectronPlatform] winToast IPC failed", e);
+            super.displayNotification(title, msg, `${this.baseUrl}/favicon.ico`, room);
+        }
+    }
+
+    private async showCustomToast(
+        title: string,
+        msg: string,
+        _avatarUrl: string | null,
+        room: Room,
+        ev?: MatrixEvent,
+    ): Promise<void> {
+        try {
+            // Respect setting that hides sender info/avatar
+            const showInfo = SettingsStore.getValue("notificationSenderInfoEnabled");
+
+            let dataUrl: string | null = null;
+            if (showInfo) {
+                // Match the UI for avatar: DM partner or room; fallback to letter avatar
+                const uiUrl = Avatar.avatarUrlForRoom(room, 64, 64, "crop");
+                if (uiUrl) {
+                    dataUrl = await this.fetchImageAsDataUrl(uiUrl);
+                }
+                if (!dataUrl) {
+                    const { key, name } = this.getLetterAvatarKeyAndName(room);
+                    dataUrl = await this.renderLetterAvatarDataUrl(name, key, 64);
+                }
+            }
+
+            await this.ipc.call("customToast", {
+                // If info is hidden, use brand as title (same as system toast)
+                title: showInfo ? title : (SdkConfig.get().brand || "Element"),
+                body: msg,
+                // Important: don't send avatar when info is hidden
+                avatar: showInfo ? dataUrl : null,
+                roomId: room.roomId,
+                eventId: ev?.getId() ?? null,
+                showInfo, // explicit flag for main process
+            });
+        } catch (e) {
+            console.warn("[toast] customToast failed, fallback to system", e);
+            super.displayNotification(title, msg, `${this.baseUrl}/favicon.ico`, room, ev);
+        }
+    }
+
+    private getLetterAvatarKeyAndName(room: Room): { key: string; name: string } {
+        const dm = this.getDmPartnerUserId(room);
+        if (dm) {
+            const name = room.getMember(dm)?.name || dm;
+            return { key: dm, name };
+        }
+        return { key: room.roomId || room.name || "#", name: room.name || "#" };
+    }
+
+    private async renderLetterAvatarDataUrl(name: string, key: string, size = 64): Promise<string> {
+        // Build backgrounds/colors using the same helpers as the UI
+        const bgUrl     = Avatar.defaultAvatarUrlForString(key);
+        const textColor = Avatar.getAvatarTextColor(key);
+        const initial   = (Avatar.getInitialLetter(name) || "?").toUpperCase();
+
+        // Try to wait for fonts (Compound), but don't block forever
+        try { await Promise.race([document.fonts?.ready ?? Promise.resolve(), new Promise(r => setTimeout(r, 120))]); } catch {}
+        const themed = getComputedStyle(document.documentElement).getPropertyValue("--cpd-font-family").trim();
+        const body   = getComputedStyle(document.body).fontFamily || "";
+        const fontFamily = themed || body || `"Inter","Inter var",system-ui,"Segoe UI",Arial,sans-serif`;
+        const fontWeight = 600;
+        const fontSize   = Math.floor(size * 0.56); // как в UI
+
+        const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+        const canvas = document.createElement("canvas");
+        canvas.width = size * dpr;
+        canvas.height = size * dpr;
+        const ctx = canvas.getContext("2d")!;
+        ctx.scale(dpr, dpr);
+
+        // Background (same data: the UI would generate)
+        await new Promise<void>((resolve) => {
+            const img = new Image();
+            img.onload = () => { ctx.drawImage(img, 0, 0, size, size); resolve(); };
+            img.onerror = () => resolve(); // без фона не падаем
+            img.src = bgUrl || "";
+        });
+
+        // Center the letter using real text metrics
+        ctx.fillStyle = textColor;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "alphabetic";
+        ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+
+        const m = ctx.measureText(initial);
+        const ascent  = m.actualBoundingBoxAscent  ?? fontSize * 0.8;
+        const descent = m.actualBoundingBoxDescent ?? fontSize * 0.2;
+        const y = (size - (ascent + descent)) / 2 + ascent;
+
+        ctx.fillText(initial, size / 2, y);
+        return canvas.toDataURL("image/png");
+    }
+
+    // Fetch an image (add Bearer for Matrix media), convert to data: URL.
+    // Returns null on failure.
+    private async fetchImageAsDataUrl(url?: string | null): Promise<string | null> {
+        if (!url) return null;
+        if (url.startsWith("data:")) return url;
+
+        try {
+            const headers: Record<string, string> = {};
+            // Add token for Matrix media / media_proxy, like the client does
+            if (/_matrix\/media(\/|_proxy\/)/.test(url)) {
+                const token = MatrixClientPeg.get()?.getAccessToken();
+                if (token) headers.Authorization = `Bearer ${token}`;
+            }
+
+            const res = await fetch(url, { headers, credentials: "omit" });
+            if (!res.ok) return null;
+
+            const blob = await res.blob();
+            // blob -> data:
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+                const fr = new FileReader();
+                fr.onload = () => resolve(String(fr.result));
+                fr.onerror = () => reject(fr.error);
+                fr.readAsDataURL(blob);
+            });
+            return dataUrl;
+        } catch {
+            return null;
+        }
+    }
+
+    private getDmPartnerUserId(room: Room): string | undefined {
+        try {
+            return DMRoomMap.shared().getUserIdForRoomId?.(room.roomId) ?? undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
     public getHumanReadableName(): string {
         return "Electron Platform"; // no translation required: only used for analytics
     }
@@ -336,6 +535,13 @@ export default class ElectronPlatform extends BasePlatform {
         room: Room,
         ev?: MatrixEvent,
     ): Notification {
+        // Policy: if sender info is hidden, use brand and app icon
+        if (!SettingsStore.getValue("notificationSenderInfoEnabled")) {
+            title = SdkConfig.get().brand || "Element";
+            // Could be null, but favicon gives a consistent look
+            avatarUrl = `${this.baseUrl}/favicon.ico`;
+        }
+
         // GNOME notification spec parses HTML tags for styling...
         // Electron Docs state all supported linux notification systems follow this markup spec
         // https://github.com/electron/electron/blob/master/docs/tutorial/desktop-environment-integration.md#linux
@@ -344,6 +550,15 @@ export default class ElectronPlatform extends BasePlatform {
         // so we shouldn't assume that all implementations will treat those properly. Very basic tag parsing is done.
         if (navigator.userAgent.includes("Linux")) {
             msg = msg.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+
+        if (navigator.userAgent.includes("Windows")) {
+            if (this.useCustomToasts()) {
+                void this.showCustomToast(title, msg, avatarUrl || null, room, ev);
+            } else {
+                void this.showWindowsToastWithAvatar(title, msg, avatarUrl || null, room, ev);
+            }
+            return undefined as unknown as Notification;
         }
 
         const notification = super.displayNotification(title, msg, avatarUrl, room, ev);

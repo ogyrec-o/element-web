@@ -1710,7 +1710,8 @@
         "mute_room": "Заглушить комнату"
     },
     "notifier": {
-        "m.key.verification.request": "%(name)s запрашивает проверку"
+        "m.key.verification.request": "%(name)s запрашивает проверку",
+        "new_message_generic": "Новое сообщение"
     },
     "onboarding": {
         "create_room": "Создать комнату",
@@ -2822,6 +2823,7 @@
             "rule_suppress_notices": "Сообщения от ботов",
             "rule_tombstone": "При обновлении комнат",
             "show_message_desktop_notification": "Показывать текст сообщения в уведомлениях на рабочем столе",
+			"desktop_notification_show_sender": "Показывать отправителя в уведомлениях на рабочем столе",
             "voip": "Аудио и видео звонки"
         },
         "preferences": {

@@ -42,6 +42,8 @@ export default class DeviceSettingsHandler extends AbstractLocalStorageSettingsH
             return this.getBoolean("notifications_body_enabled");
         } else if (settingName === "audioNotificationsEnabled") {
             return this.getBoolean("audio_notifications_enabled");
+        } else if (settingName === "notificationSenderInfoEnabled") {
+            return this.getBoolean("notifications_sender_enabled");
         }
 
         const settings = this.getSettings() || {};
@@ -65,6 +67,10 @@ export default class DeviceSettingsHandler extends AbstractLocalStorageSettingsH
             return Promise.resolve();
         } else if (settingName === "audioNotificationsEnabled") {
             this.setBoolean("audio_notifications_enabled", newValue);
+            this.watchers.notifyUpdate(settingName, null, SettingLevel.DEVICE, newValue);
+            return Promise.resolve();
+        } else if (settingName === "notificationSenderInfoEnabled") {
+            this.setBoolean("notifications_sender_enabled", newValue);
             this.watchers.notifyUpdate(settingName, null, SettingLevel.DEVICE, newValue);
             return Promise.resolve();
         }

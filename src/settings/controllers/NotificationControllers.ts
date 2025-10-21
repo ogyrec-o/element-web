@@ -12,7 +12,8 @@ import { PushRuleActionName } from "matrix-js-sdk/src/matrix";
 
 import SettingController from "./SettingController";
 import { MatrixClientPeg } from "../../MatrixClientPeg";
-import { type SettingLevel } from "../SettingLevel";
+import { SettingLevel } from "../SettingLevel";
+import SettingsStore from "../SettingsStore";
 
 // .m.rule.master being enabled means all events match that push rule
 // default action on this rule is dont_notify, but it could be something else
@@ -69,5 +70,36 @@ export class NotificationBodyEnabledController extends SettingController {
         }
 
         return calculatedValue;
+    }
+
+    public async onChange(level: SettingLevel, roomId: string, newValue: any): Promise<void> {
+        if (newValue === true) {
+            const sender = SettingsStore.getValue("notificationSenderInfoEnabled");
+            if (!sender) {
+                // Ensure sender info is on when enabling body preview
+                await SettingsStore.setValue("notificationSenderInfoEnabled", null, SettingLevel.DEVICE, true);
+                await SettingsStore.setValue("notificationBodyEnabled", null, SettingLevel.DEVICE, true);
+            }
+        }
+    }
+}
+
+export class NotificationSenderInfoEnabledController extends SettingController {
+    public getValueOverride(level: SettingLevel, roomId: string, calculatedValue: any): any {
+        // Disable if notifications are not possible
+        if (!getNotifier().isPossible()) return false;
+
+        // Default: true
+        if (calculatedValue === null) {
+            return true;
+        }
+        return calculatedValue;
+    }
+
+    public async onChange(level: SettingLevel, roomId: string, newValue: any): Promise<void> {
+        // If sender is off, also force preview off
+        if (newValue === false) {
+            await SettingsStore.setValue("notificationBodyEnabled", null, SettingLevel.DEVICE, false);
+        }
     }
 }

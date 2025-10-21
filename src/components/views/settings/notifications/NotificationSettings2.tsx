@@ -72,6 +72,7 @@ export default function NotificationSettings2(): JSX.Element {
     const cli = useMatrixClientContext();
 
     const desktopNotifications = useSettingValue("notificationsEnabled");
+    const desktopShowSender = useSettingValue("notificationSenderInfoEnabled");
     const desktopShowBody = useSettingValue("notificationBodyEnabled");
     const audioNotifications = useSettingValue("audioNotificationsEnabled");
 
@@ -137,11 +138,28 @@ export default function NotificationSettings2(): JSX.Element {
                         }
                     />
                     <LabelledToggleSwitch
+                        data-testid="notif-setting-notificationSenderInfoEnabled"
+                        label={_t("settings|notifications|desktop_notification_show_sender")}
+                        value={desktopShowSender}
+                        onChange={(value) =>
+                            SettingsStore.setValue("notificationSenderInfoEnabled", null, SettingLevel.DEVICE, value)
+                        }
+                    />
+                    <LabelledToggleSwitch
                         label={_t("settings|notifications|desktop_notification_message_preview")}
                         value={desktopShowBody}
-                        onChange={(value) =>
-                            SettingsStore.setValue("notificationBodyEnabled", null, SettingLevel.DEVICE, value)
-                        }
+                        disabled={!desktopShowSender}
+                        onChange={async (value) => {
+                            if (value && !desktopShowSender) {
+                                await SettingsStore.setValue(
+                                    "notificationSenderInfoEnabled",
+                                    null,
+                                    SettingLevel.DEVICE,
+                                    true,
+                                );
+                            }
+                            await SettingsStore.setValue("notificationBodyEnabled", null, SettingLevel.DEVICE, value);
+                        }}
                     />
                     <LabelledToggleSwitch
                         label={_t("settings|notifications|enable_audible_notifications_session")}

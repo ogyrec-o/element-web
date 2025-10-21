@@ -128,36 +128,40 @@ class NotifierClass extends TypedEventEmitter<keyof EmittedEvents, EmittedEvents
         let msg = this.notificationMessageForEvent(ev);
         if (!msg) return;
 
-        let title: string | undefined;
-        if (!ev.sender || room.name === ev.sender.name) {
-            title = room.name;
-            // notificationMessageForEvent includes sender, but we already have the sender here
-            const msgType = ev.getContent().msgtype;
-            if (ev.getContent().body && (!msgType || !msgTypeHandlers.hasOwnProperty(msgType))) {
-                msg = stripPlainReply(ev.getContent().body);
-            }
-        } else if (ev.getType() === "m.room.member") {
-            // context is all in the message here, we don't need
-            // to display sender info
-            title = room.name;
-        } else if (ev.sender) {
-            title = ev.sender.name + " (" + room.name + ")";
-            // notificationMessageForEvent includes sender, but we've just out sender in the title
-            const msgType = ev.getContent().msgtype;
-            if (ev.getContent().body && (!msgType || !msgTypeHandlers.hasOwnProperty(msgType))) {
-                msg = stripPlainReply(ev.getContent().body);
-            }
-        }
-
-        if (!title) return;
-
-        if (!this.isBodyEnabled()) {
-            msg = "";
-        }
-
+        const showSender = SettingsStore.getValue("notificationSenderInfoEnabled");
+        const genericMsg = _t("notifier|new_message_generic");
+        let title: string = SdkConfig.get().brand || "Element";
         let avatarUrl: string | null = null;
-        if (ev.sender && !SettingsStore.getValue("lowBandwidth")) {
-            avatarUrl = Avatar.avatarUrlForMember(ev.sender, 40, 40, "crop");
+
+        if (!showSender) {
+            // Hide personal info: brand title + generic message
+            title = SdkConfig.get().brand || "Element";
+            msg = genericMsg;
+        } else {
+            // Original logic for title construction
+            if (!ev.sender || room.name === ev.sender.name) {
+                title = room.name;
+                const msgType = ev.getContent().msgtype;
+                if (ev.getContent().body && (!msgType || !msgTypeHandlers.hasOwnProperty(msgType))) {
+                    msg = stripPlainReply(ev.getContent().body);
+                }
+            } else if (ev.getType() === "m.room.member") {
+                title = room.name;
+            } else if (ev.sender) {
+                title = ev.sender.name + " (" + room.name + ")";
+                const msgType = ev.getContent().msgtype;
+                if (ev.getContent().body && (!msgType || !msgTypeHandlers.hasOwnProperty(msgType))) {
+                    msg = stripPlainReply(ev.getContent().body);
+                }
+            }
+
+            if (!this.isBodyEnabled()) {
+                    msg = genericMsg;
+            }
+
+            if (ev.sender && !SettingsStore.getValue("lowBandwidth")) {
+                avatarUrl = Avatar.avatarUrlForMember(ev.sender, 40, 40, "crop");
+            }
         }
 
         const notif = plaf.displayNotification(title, msg!, avatarUrl, room, ev);

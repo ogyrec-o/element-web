@@ -1709,7 +1709,8 @@
         "mute_room": "Mute room"
     },
     "notifier": {
-        "m.key.verification.request": "%(name)s is requesting verification"
+        "m.key.verification.request": "%(name)s is requesting verification",
+        "new_message_generic": "You have a new message"
     },
     "onboarding": {
         "create_room": "Create a Group Chat",
@@ -2861,6 +2862,7 @@
             "rule_suppress_notices": "Messages sent by bot",
             "rule_tombstone": "When rooms are upgraded",
             "show_message_desktop_notification": "Show message in desktop notification",
+            "desktop_notification_show_sender": "Show sender info in desktop notification",
             "sounds_release_announcement": {
                 "description": "Your notification ping and call ringer have been updated—clearer, quicker, and less disruptive",
                 "title": "We’ve refreshed your sounds"

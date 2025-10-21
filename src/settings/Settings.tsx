@@ -17,6 +17,7 @@ import DeviceIsolationModeController from "./controllers/DeviceIsolationModeCont
 import {
     NotificationBodyEnabledController,
     NotificationsEnabledController,
+    NotificationSenderInfoEnabledController,
 } from "./controllers/NotificationControllers";
 import ThemeController from "./controllers/ThemeController";
 import ReloadOnChangeController from "./controllers/ReloadOnChangeController";
@@ -320,6 +321,7 @@ export interface Settings {
         | false
     >;
     "notificationBodyEnabled": IBaseSetting<boolean>;
+    "notificationSenderInfoEnabled": IBaseSetting<boolean>;
     "audioNotificationsEnabled": IBaseSetting<boolean>;
     "enableWidgetScreenshots": IBaseSetting<boolean>;
     "promptBeforeInviteUnknownUsers": IBaseSetting<boolean>;
@@ -1154,6 +1156,11 @@ export const SETTINGS: Settings = {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
         default: true,
         controller: new NotificationBodyEnabledController(),
+    },
+    "notificationSenderInfoEnabled": {
+        supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
+        default: true,
+        controller: new NotificationSenderInfoEnabledController(),
     },
     "audioNotificationsEnabled": {
         supportedLevels: LEVELS_DEVICE_ONLY_SETTINGS,
